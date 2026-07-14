@@ -4,8 +4,8 @@ Simple frontend project.
 Quick start
 Clone the repo:
 
-git clone https://github.com/gonzalochuan/Hotel-V2.git
-cd Hotel-V2
+git clone https://github.com/gonzalochuan/Hotel-V1.git
+cd Hotel-V1
 Install dependencies:
 
 npm install
