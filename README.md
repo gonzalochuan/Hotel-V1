@@ -1,121 +1,15 @@
-# Delightful PH - Hotel Booking Landing Page
+Hotel-V2
+Simple frontend project.
 
-A luxury hotel landing page for Filipino independent hotels built with React, Vite, TypeScript, TailwindCSS, and React Router following SOLID principles.
+Quick start
+Clone the repo:
 
-## Tech Stack
+git clone https://github.com/gonzalochuan/Hotel-V2.git
+cd Hotel-V2
+Install dependencies:
 
-- **Framework**: React 18
-- **Build Tool**: Vite
-- **Routing**: React Router DOM
-- **Language**: TypeScript
-- **Styling**: TailwindCSS
-- **Fonts**: Custom fonts (Classy Vogue, Perfect Girl Sans Serif, Perfect Romantic)
-
-## Project Structure
-
-The project follows SOLID principles with a clear separation of concerns:
-
-```
-src/
-├── components/            # React components
-│   ├── layout/           # Layout components (Navigation, Footer)
-│   ├── sections/         # Page sections (Hero, About, Rooms, etc.)
-│   └── booking/          # Booking-related components
-├── pages/               # Page components for routing
-│   ├── SearchPage.tsx
-│   ├── DetailsPage.tsx
-│   ├── PaymentsPage.tsx
-│   └── SuccessPage.tsx
-├── services/             # API service layer (for future API integration)
-│   └── api/
-│       └── hotelService.ts
-├── types/                # TypeScript type definitions
-│   └── index.ts
-├── utils/                # Utility functions
-│   ├── dateHelpers.ts
-│   └── constants.ts
-├── App.tsx               # Main app with React Router
-├── main.tsx              # Entry point
-└── globals.css           # Global styles
-```
-
-## Features
-
-### Landing Page
-- **Hero Section**: Full-screen video background with cycling videos (7 videos, 2-second intervals)
-- **Navigation**: Fixed navigation bar with Delightful PH branding
-- **Booking Widget**: Date picker, guest selection, and special codes input
-- **About Section**: Welcome/about content placeholder
-- **Rooms Section**: Room types display (placeholder)
-- **Amenities Section**: Hotel amenities grid
-- **Location Section**: Map placeholder with address
-- **Footer**: Contact info, quick links, and social media
-
-### Future Pages (Placeholder)
-- `/search` - Hotel search results
-- `/details/:id` - Individual hotel details (dynamic route)
-- `/payments` - Payment processing
-- `/success` - Payment confirmation
-
-## Custom Fonts
-
-The project uses three custom fonts from the `public/font/` directory:
-- **Classy Vogue** (`font-classy`) - Elegant serif for headings
-- **Perfect Girl Sans Serif** (`font-perfect`) - Clean sans-serif for UI elements
-- **Perfect Romantic** (`font-romantic`) - Decorative serif for accents
-
-## Getting Started
-
-### Prerequisites
-- Node.js 18+ installed
-- npm or yarn package manager
-
-### Installation
-
-1. Install dependencies:
-```bash
 npm install
-```
+Run the dev server:
 
-2. Run the development server:
-```bash
 npm run dev
-```
-
-3. Open [http://localhost:3000](http://localhost:3000) in your browser
-
-### Build for Production
-
-```bash
-npm run build
-npm start
-```
-
-## API Integration
-
-The project includes a service layer (`src/services/api/hotelService.ts`) following the Singleton pattern for future API integration. Currently uses mock data but structured to easily connect to a real API.
-
-## Component Architecture
-
-Components are organized by function:
-- **Layout components**: Navigation, Footer
-- **Section components**: Hero, About, Rooms, Amenities, Location
-- **Feature components**: BookingWidget
-
-All components are TypeScript with proper type definitions from `src/types/index.ts`.
-
-## Styling
-
-Uses TailwindCSS with custom font families configured in `tailwind.config.ts`. Font variables are defined in `globals.css` and applied via CSS variables.
-
-## Future Enhancements
-
-- Replace video placeholder with actual video file
-- Add real images for rooms and amenities
-- Integrate with hotel booking API
-- Implement date picker functionality
-- Add guest selection dropdown
-- Implement form validation
-- Add loading states and error handling
-- Integrate map API for location section
-- Add animation and transitions
+That's it — the repo excludes node_modules via .gitignore so cloning and npm install will reproduce it locally.
