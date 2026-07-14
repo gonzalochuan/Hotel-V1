@@ -1,19 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ROOMS, FILTERS } from '@/data/rooms'
+import { useRoomsCatalog } from '@/context/RoomsCatalogContext'
 import { BookingData } from '@/types'
 import { addDays, startOfDay } from '@/utils/dateHelpers'
 import { encodeBookingQuery } from '@/utils/bookingQuery'
 
-const rooms = ROOMS
+const FILTERS_ALL = 'All'
 
 const RoomsSection: React.FC = () => {
-  const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>('All')
-  const [activeId, setActiveId] = useState(rooms[0].id)
+  const { rooms, categories, loading, error } = useRoomsCatalog()
+  const [activeFilter, setActiveFilter] = useState<string>(FILTERS_ALL)
+  const [activeId, setActiveId] = useState<string | null>(null)
   const thumbRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
-  const filteredRooms = activeFilter === 'All' ? rooms : rooms.filter((r) => r.category === activeFilter)
+  const filters = [FILTERS_ALL, ...categories]
+  const filteredRooms = activeFilter === FILTERS_ALL ? rooms : rooms.filter((r) => r.category === activeFilter)
   const activeRoom = filteredRooms.find((r) => r.id === activeId) ?? filteredRooms[0]
 
   useEffect(() => {
@@ -21,13 +23,13 @@ const RoomsSection: React.FC = () => {
       setActiveId(filteredRooms[0].id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter])
+  }, [activeFilter, rooms])
 
   const scrollThumbs = (dir: 'left' | 'right') => {
     thumbRef.current?.scrollBy({ left: dir === 'left' ? -260 : 260, behavior: 'smooth' })
   }
 
-  const handleCheckAvailability = (roomId: number) => {
+  const handleCheckAvailability = (roomId: string) => {
     const today = startOfDay(new Date())
     const defaultData: BookingData = {
       dates: { checkIn: addDays(today, 1), checkOut: addDays(today, 2) },
@@ -35,6 +37,22 @@ const RoomsSection: React.FC = () => {
       specialCode: '',
     }
     navigate(`/search?${encodeBookingQuery(defaultData)}&room=${roomId}`)
+  }
+
+  if (loading) {
+    return (
+      <section id="rooms" className="pt-8 pb-20 px-4 bg-white text-center font-classy text-gray-500">
+        Loading rooms…
+      </section>
+    )
+  }
+
+  if (error) {
+    return (
+      <section id="rooms" className="pt-8 pb-20 px-4 bg-white text-center font-classy text-red-600">
+        Failed to load rooms: {error}
+      </section>
+    )
   }
 
   if (!activeRoom) return null
@@ -56,7 +74,7 @@ const RoomsSection: React.FC = () => {
           <span className="font-classy text-xs tracking-[0.2em] text-gray-400 uppercase">
             Filter By
           </span>
-          {FILTERS.map((filter, i) => (
+          {filters.map((filter, i) => (
             <React.Fragment key={filter}>
               {i > 0 && <span className="hidden sm:block w-px h-4 bg-gray-300" />}
               <button

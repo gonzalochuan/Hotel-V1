@@ -10,22 +10,3 @@ export interface BookingData {
   }
   specialCode?: string
 }
-
-export interface Room {
-  id: string
-  name: string
-  description: string
-  price: number
-  image: string
-  amenities: string[]
-}
-
-export interface Hotel {
-  id: string
-  name: string
-  location: string
-  description: string
-  rating: number
-  images: string[]
-  rooms: Room[]
-}

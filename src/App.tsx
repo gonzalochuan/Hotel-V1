@@ -12,6 +12,8 @@ import SearchPage from './pages/SearchPage'
 import DetailsPage from './pages/DetailsPage'
 import PaymentsPage from './pages/PaymentsPage'
 import SuccessPage from './pages/SuccessPage'
+import { RoomsCatalogProvider } from './context/RoomsCatalogContext'
+import { AuthProvider } from './context/AuthContext'
 
 const HomePage: React.FC = () => {
   return (
@@ -30,15 +32,19 @@ const HomePage: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/search" element={<SearchPage />} />
-        <Route path="/details/:id" element={<DetailsPage />} />
-        <Route path="/payments" element={<PaymentsPage />} />
-        <Route path="/success" element={<SuccessPage />} />
-      </Routes>
-    </BrowserRouter>
+    <AuthProvider>
+      <RoomsCatalogProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/details/:id" element={<DetailsPage />} />
+            <Route path="/payments" element={<PaymentsPage />} />
+            <Route path="/success" element={<SuccessPage />} />
+          </Routes>
+        </BrowserRouter>
+      </RoomsCatalogProvider>
+    </AuthProvider>
   )
 }
 

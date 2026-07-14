@@ -5,6 +5,9 @@ node_modules/
 dist/
 build/
 .vite/
+*.tsbuildinfo
+vite.config.d.ts
+vite.config.js
 
 # Logs
 npm-debug.log*

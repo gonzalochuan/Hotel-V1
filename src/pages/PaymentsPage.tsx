@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Navigation from '@/components/layout/Navigation'
-import { ROOMS } from '@/data/rooms'
+import { useRoomsCatalog } from '@/context/RoomsCatalogContext'
+import { useAuth } from '@/context/AuthContext'
+import { createBooking } from '@/services/bookingsApi'
+import { ENHANCEMENTS, TAX_RATE } from '@/data/enhancements'
 import { BookingData } from '@/types'
 import { addDays, formatDateWithWeekday, getDaysBetween, startOfDay } from '@/utils/dateHelpers'
 import { decodeBookingQuery } from '@/utils/bookingQuery'
@@ -79,32 +82,114 @@ const PaymentsPage: React.FC = () => {
   const [showSpecialRequests, setShowSpecialRequests] = useState(false)
   const [showCancellationDetails, setShowCancellationDetails] = useState(false)
   const [couponVisible, setCouponVisible] = useState(false)
+  const [selectedEnhancements, setSelectedEnhancements] = useState<string[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  const { rooms, loading, error } = useRoomsCatalog()
+  const { session, signInWithGoogle } = useAuth()
 
   const bookingData = useMemo(
     () => decodeBookingQuery(searchParams, defaultBookingData()),
     [searchParams]
   )
-  const roomId = Number(searchParams.get('room')) || ROOMS[0].id
-  const room = ROOMS.find((r) => r.id === roomId) ?? ROOMS[0]
+  const roomId = searchParams.get('room')
+  const room = rooms.find((r) => r.id === roomId) ?? rooms[0]
 
   const nights = getDaysBetween(bookingData.dates.checkIn, bookingData.dates.checkOut)
   const roomCount = bookingData.guests.rooms
 
-  const subtotal = room.priceValue * roomCount * nights
-  const taxesAndFees = Math.round(subtotal * 0.12)
-  const total = subtotal + taxesAndFees
+  const pickedEnhancements = ENHANCEMENTS.filter((item) => selectedEnhancements.includes(item.id))
+  const enhancementsTotal = pickedEnhancements.reduce((sum, item) => sum + item.price, 0)
 
-  const currency = (value: number) => `₱${value.toLocaleString('en-PH')}`
+  const subtotal = room ? room.priceValue * roomCount * nights : 0
+  const taxesAndFees = Math.round(subtotal * TAX_RATE)
+  const total = subtotal + taxesAndFees + enhancementsTotal
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    navigate(`/success?room=${room.id}`)
+  const pendingConfirmRef = useRef(false)
+
+  const submitBooking = async (accessToken: string) => {
+    if (!room) return
+    setIsSubmitting(true)
+    setSubmitError(null)
+    try {
+      await createBooking(
+        {
+          roomId: room.id,
+          checkIn: bookingData.dates.checkIn.toISOString().slice(0, 10),
+          checkOut: bookingData.dates.checkOut.toISOString().slice(0, 10),
+          adults: bookingData.guests.adults,
+          children: bookingData.guests.children,
+          roomsCount: roomCount,
+          enhancements: pickedEnhancements.map((item) => ({ id: item.id, label: item.label, price: item.price })),
+          subtotal,
+          taxes: taxesAndFees,
+          total,
+        },
+        accessToken,
+      )
+      navigate(`/success?room=${room.id}`)
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to confirm booking')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!session) {
+      pendingConfirmRef.current = true
+      await signInWithGoogle()
+      return
+    }
+
+    await submitBooking(session.access_token)
+  }
+
+  // Once sign-in completes (popup closes, session appears), automatically
+  // finish the booking the user was already trying to submit — no second click.
+  useEffect(() => {
+    if (session && pendingConfirmRef.current) {
+      pendingConfirmRef.current = false
+      void submitBooking(session.access_token)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session])
 
   // Scroll to top on mount
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
+
+  const currency = (value: number) => `₱${value.toLocaleString('en-PH')}`
+
+  const toggleEnhancement = (id: string) => {
+    setSelectedEnhancements((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navigation forceScrolled />
+        <p className="p-16 text-center font-classy text-gray-500">Loading booking details…</p>
+      </div>
+    )
+  }
+
+  if (error || !room) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navigation forceScrolled />
+        <p className="p-16 text-center font-classy text-red-600">
+          {error ? `Failed to load room: ${error}` : 'Room not found.'}
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -209,6 +294,38 @@ const PaymentsPage: React.FC = () => {
                   </div>
                 </div>
               ))}
+
+              <h2 className="font-classy text-2xl text-gray-900 mb-1">Enhance Your Stay</h2>
+              <p className="font-classy text-base text-gray-400 mb-6">Optional add-ons for your booking</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
+                {ENHANCEMENTS.map((item) => {
+                  const isSelected = selectedEnhancements.includes(item.id)
+                  const Icon = item.icon
+                  return (
+                    <button
+                      type="button"
+                      key={item.id}
+                      onClick={() => toggleEnhancement(item.id)}
+                      className={`flex items-start gap-3 border p-4 text-left transition-colors ${
+                        isSelected ? 'border-coffee bg-coffee/5' : 'border-gray-200 hover:border-coffee/40'
+                      }`}
+                    >
+                      <div className="w-9 h-9 shrink-0 rounded-full border border-coffee/30 flex items-center justify-center text-coffee">
+                        <Icon className="w-4 h-4" strokeWidth={1.5} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-classy text-sm text-gray-900">{item.label}</span>
+                          <span className="font-classy text-xs text-coffee font-semibold shrink-0">
+                            {item.price > 0 ? currency(item.price) : 'Included'}
+                          </span>
+                        </div>
+                        <p className="font-classy text-xs text-gray-500 mt-1">{item.description}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
 
               <h2 id="payment-details" className="font-classy text-2xl text-gray-900 mb-4">Payment Details</h2>
               <div className="flex items-center gap-3 mb-4">
@@ -334,15 +451,26 @@ const PaymentsPage: React.FC = () => {
                 and accept the <a href="#" className="underline hover:text-coffee">Terms of Service</a>.
               </p>
 
+              {session ? (
+                <p className="font-classy text-sm text-gray-500 text-center mb-3">
+                  Signed in as {session.user.email}
+                </p>
+              ) : null}
+
+              {submitError ? (
+                <p className="font-classy text-sm text-red-600 text-center mb-3">{submitError}</p>
+              ) : null}
+
               <button
                 type="submit"
-                className="w-full bg-coffee hover:bg-coffee-light text-white font-classy tracking-[0.2em] uppercase text-sm py-4 flex items-center justify-center gap-2"
+                disabled={isSubmitting}
+                className="w-full bg-coffee hover:bg-coffee-light text-white font-classy tracking-[0.2em] uppercase text-sm py-4 flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <rect x="4" y="10" width="16" height="10" rx="1.5" />
                   <path d="M8 10V7a4 4 0 018 0v3" />
                 </svg>
-                Complete Booking
+                {isSubmitting ? 'Confirming…' : session ? 'Complete Booking' : 'Sign in with Google to Book'}
               </button>
               <p className="font-classy text-base text-gray-400 text-center mt-3">
                 Our secure encryption protects your personal details at every step.
@@ -444,6 +572,12 @@ const PaymentsPage: React.FC = () => {
                       <span>Taxes &amp; fees</span>
                       <span>{currency(taxesAndFees)}</span>
                     </div>
+                    {pickedEnhancements.map((item) => (
+                      <div key={item.id} className="flex justify-between">
+                        <span>{item.label}</span>
+                        <span>{item.price > 0 ? currency(item.price) : 'Included'}</span>
+                      </div>
+                    ))}
                   </div>
 
                   {!couponVisible ? (

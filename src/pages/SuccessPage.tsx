@@ -2,12 +2,13 @@ import React, { useEffect, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import Navigation from '@/components/layout/Navigation'
 import Footer from '@/components/layout/Footer'
-import { ROOMS } from '@/data/rooms'
+import { useRoomsCatalog } from '@/context/RoomsCatalogContext'
 
 const SuccessPage: React.FC = () => {
   const [searchParams] = useSearchParams()
-  const roomId = Number(searchParams.get('room')) || ROOMS[0].id
-  const room = useMemo(() => ROOMS.find((r) => r.id === roomId) ?? ROOMS[0], [roomId])
+  const { rooms } = useRoomsCatalog()
+  const roomId = searchParams.get('room')
+  const room = useMemo(() => rooms.find((r) => r.id === roomId) ?? rooms[0], [roomId, rooms])
   const confirmationCode = useMemo(
     () => `DPH-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
     []
@@ -37,7 +38,7 @@ const SuccessPage: React.FC = () => {
             Thank You for Your Reservation
           </h1>
           <p className="font-classy text-sm text-gray-600 leading-relaxed mb-8">
-            Your stay in the <span className="text-coffee font-medium">{room.name}</span> is booked. A
+            Your stay in the <span className="text-coffee font-medium">{room?.name ?? 'your room'}</span> is booked. A
             confirmation email with your itinerary has been sent to you.
           </p>
 

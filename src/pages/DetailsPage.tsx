@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Navigation from '@/components/layout/Navigation'
 import Footer from '@/components/layout/Footer'
 import BookingCalendarModal from '@/components/booking/BookingCalendarModal'
-import { ROOMS } from '@/data/rooms'
+import { useRoomsCatalog } from '@/context/RoomsCatalogContext'
 import { BookingData } from '@/types'
 import { addDays, formatDateWithWeekday, getDaysBetween, startOfDay } from '@/utils/dateHelpers'
 import { decodeBookingQuery, encodeBookingQuery } from '@/utils/bookingQuery'
@@ -113,14 +113,43 @@ const DetailsPage: React.FC = () => {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [isBookingOpen, setIsBookingOpen] = useState(false)
+  const { rooms, loading, error } = useRoomsCatalog()
 
-  const room = useMemo(() => ROOMS.find((r) => r.id === Number(id)) ?? ROOMS[0], [id])
-  const otherRooms = useMemo(() => ROOMS.filter((r) => r.id !== room.id).slice(0, 3), [room])
+  const room = useMemo(() => rooms.find((r) => r.id === id) ?? rooms[0], [id, rooms])
+  const otherRooms = useMemo(
+    () => rooms.filter((r) => r.id !== room?.id).slice(0, 3),
+    [rooms, room],
+  )
 
   const bookingData = useMemo(
     () => decodeBookingQuery(searchParams, defaultBookingData()),
     [searchParams]
   )
+
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navigation />
+        <p className="p-16 text-center font-classy text-gray-500">Loading room…</p>
+      </div>
+    )
+  }
+
+  if (error || !room) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navigation />
+        <p className="p-16 text-center font-classy text-red-600">
+          {error ? `Failed to load room: ${error}` : 'Room not found.'}
+        </p>
+      </div>
+    )
+  }
 
   const nights = getDaysBetween(bookingData.dates.checkIn, bookingData.dates.checkOut)
   const subtotal = room.priceValue * bookingData.guests.rooms * nights
@@ -133,11 +162,6 @@ const DetailsPage: React.FC = () => {
   }
 
   const bookLink = `/payments?room=${room.id}&${encodeBookingQuery(bookingData)}`
-
-  // Scroll to top on mount
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [])
 
   return (
     <div className="min-h-screen bg-white">
