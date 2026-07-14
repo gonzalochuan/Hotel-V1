@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Classy Vogue';
+  src: url('/font/classy_vogue/Classyvogueregular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Perfect Girl Sans Serif';
+  src: url('/font/perfect_girl_sans_serif/PerfectGirl-SansSerif.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Perfect Romantic';
+  src: url('/font/perfect_romantic/PerfectRomantic-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Colbiac';
+  src: url('/font/colbiac-font/ColbiacRegular-x3r4q.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Upstair Sans';
+  src: url('/font/upstair_sans/Upstairs Sans personal license.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Apple Garamond';
+  src: url('/font/apple_garamond/AppleGaramond.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Balmoon';
+  src: url('/font/balmoon/Balmoon.ttf.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --font-classy: 'Classy Vogue', serif;
+    --font-perfect: 'Perfect Girl Sans Serif', sans-serif;
+    --font-romantic: 'Perfect Romantic', serif;
+    --font-colbiac: 'Colbiac', sans-serif;
+    --font-upstair_sans: 'Upstair Sans', sans-serif;
+    --font-apple_garamond: 'Apple Garamond', serif;
+    --font-balmoon: 'Balmoon', sans-serif;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #ffffff;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #413524;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #704828;
+}
+
+/* Floating animation keyframes */
+@keyframes float-1 {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes float-2 {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-15px); }
+}
+
+@keyframes float-3 {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-25px); }
+}
+
+@keyframes float-4 {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-18px); }
+}
+
+.animate-float-1 {
+  animation: float-1 3s ease-in-out infinite;
+}
+
+.animate-float-2 {
+  animation: float-2 4s ease-in-out infinite;
+}
+
+.animate-float-3 {
+  animation: float-3 3.5s ease-in-out infinite;
+}
+
+.animate-float-4 {
+  animation: float-4 4.5s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
