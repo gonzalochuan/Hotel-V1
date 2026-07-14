@@ -1,4 +1,4 @@
-# Hotel-V2
+# Hotel-V1
 
 Simple frontend project.
 
