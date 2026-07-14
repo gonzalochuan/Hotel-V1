@@ -5,6 +5,9 @@ import { BookingData } from '@/types'
 import { addDays, startOfDay } from '@/utils/dateHelpers'
 import { encodeBookingQuery } from '@/utils/bookingQuery'
 import BookingCalendarModal from '@/components/booking/BookingCalendarModal'
+import AccountPanel from '@/components/layout/AccountPanel'
+import { useAuth } from '@/context/AuthContext'
+import { User } from 'lucide-react'
 
 const defaultBookingData = (): BookingData => {
   const today = startOfDay(new Date())
@@ -23,7 +26,9 @@ const Navigation: React.FC<NavigationProps> = ({ forceScrolled = false }) => {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isBookingOpen, setIsBookingOpen] = useState(false)
+  const [isAccountOpen, setIsAccountOpen] = useState(false)
   const navigate = useNavigate()
+  const { session } = useAuth()
 
   useEffect(() => {
     const handleScroll = () => {
@@ -76,6 +81,15 @@ const Navigation: React.FC<NavigationProps> = ({ forceScrolled = false }) => {
             </a>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={() => setIsAccountOpen(true)}
+          aria-label="Account"
+          className="relative grid h-9 w-9 place-items-center rounded-full border border-current transition-colors hover:bg-current/10"
+        >
+          <User size={16} />
+          {session ? <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-green-500" /> : null}
+        </button>
         <button
           type="button"
           onClick={() => setIsBookingOpen(true)}
@@ -160,6 +174,8 @@ const Navigation: React.FC<NavigationProps> = ({ forceScrolled = false }) => {
         initialData={defaultBookingData()}
         onSearch={handleSearch}
       />
+
+      <AccountPanel isOpen={isAccountOpen} onClose={() => setIsAccountOpen(false)} />
     </nav>
   )
 }

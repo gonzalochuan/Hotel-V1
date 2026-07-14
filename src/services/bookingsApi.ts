@@ -24,18 +24,19 @@ export type BookingInput = {
 export type Booking = BookingInput & {
   id: string
   userId: string
+  roomName: string | null
+  roomImage: string | null
   status: string
   createdAt: string
 }
 
-export async function createBooking(input: BookingInput, accessToken: string): Promise<Booking> {
-  const response = await fetch(`${API_URL}/bookings`, {
-    method: 'POST',
+async function authedRequest<T>(path: string, accessToken: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify(input),
   })
 
   if (!response.ok) {
@@ -43,5 +44,13 @@ export async function createBooking(input: BookingInput, accessToken: string): P
     throw new ApiError(response.status, body?.error ?? `Request failed with status ${response.status}`)
   }
 
-  return response.json() as Promise<Booking>
+  return response.json() as Promise<T>
+}
+
+export function createBooking(input: BookingInput, accessToken: string): Promise<Booking> {
+  return authedRequest<Booking>('/bookings', accessToken, { method: 'POST', body: JSON.stringify(input) })
+}
+
+export function fetchMyBookings(accessToken: string): Promise<Booking[]> {
+  return authedRequest<Booking[]>('/bookings/mine', accessToken)
 }
