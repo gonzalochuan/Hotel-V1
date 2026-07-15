@@ -19,6 +19,7 @@ export type ApiRoom = {
   description: string
   roomType: string
   price: number
+  discountPercent: number
   capacity: number
   sizeSqm: number
   features: string[]
@@ -35,6 +36,8 @@ export interface RoomItem {
   name: string
   price: string
   priceValue: number
+  basePriceValue: number
+  discountPercent: number
   image: string
   description: string
   size: string
@@ -56,11 +59,16 @@ function deriveBeds(room: ApiRoom): string {
 }
 
 export function mapRoomToItem(room: ApiRoom): RoomItem {
+  const discountPercent = room.discountPercent ?? 0
+  const effectivePrice = discountPercent > 0 ? Math.round(room.price * (1 - discountPercent / 100)) : room.price
+
   return {
     id: room.id,
     name: room.name,
-    price: `₱${room.price.toLocaleString('en-PH')}`,
-    priceValue: room.price,
+    price: `₱${effectivePrice.toLocaleString('en-PH')}`,
+    priceValue: effectivePrice,
+    basePriceValue: room.price,
+    discountPercent,
     image: primaryImageUrl(room),
     description: room.description,
     size: `${room.sizeSqm} m²`,

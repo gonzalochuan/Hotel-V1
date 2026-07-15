@@ -54,3 +54,14 @@ export function createBooking(input: BookingInput, accessToken: string): Promise
 export function fetchMyBookings(accessToken: string): Promise<Booking[]> {
   return authedRequest<Booking[]>('/bookings/mine', accessToken)
 }
+
+export async function checkRoomAvailability(roomId: string, checkIn: string, checkOut: string): Promise<boolean> {
+  const params = new URLSearchParams({ roomId, checkIn, checkOut })
+  const response = await fetch(`${API_URL}/bookings/availability?${params.toString()}`)
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new ApiError(response.status, body?.error ?? `Request failed with status ${response.status}`)
+  }
+  const json = (await response.json()) as { available: boolean }
+  return json.available
+}

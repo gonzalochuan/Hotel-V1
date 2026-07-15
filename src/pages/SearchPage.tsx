@@ -4,6 +4,7 @@ import Navigation from '@/components/layout/Navigation'
 import Footer from '@/components/layout/Footer'
 import BookingCalendarModal from '@/components/booking/BookingCalendarModal'
 import { useRoomsCatalog } from '@/context/RoomsCatalogContext'
+import { checkRoomAvailability } from '@/services/bookingsApi'
 import { resolveIcon } from '@/data/icons'
 import { BookingData } from '@/types'
 import { addDays, formatDateWithWeekday, getDaysBetween, startOfDay } from '@/utils/dateHelpers'
@@ -89,6 +90,27 @@ const SearchPage: React.FC = () => {
 
   const [isBookingOpen, setIsBookingOpen] = useState(false)
   const [activeFilter, setActiveFilter] = useState<string>(FILTERS_ALL)
+  const [dateAvailability, setDateAvailability] = useState<Record<string, boolean>>({})
+
+  const checkInStr = bookingData.dates.checkIn.toISOString().slice(0, 10)
+  const checkOutStr = bookingData.dates.checkOut.toISOString().slice(0, 10)
+
+  useEffect(() => {
+    if (rooms.length === 0) return
+    let cancelled = false
+    Promise.all(
+      rooms.map(async (room) => {
+        const available = await checkRoomAvailability(room.id, checkInStr, checkOutStr).catch(() => true)
+        return [room.id, available] as const
+      }),
+    ).then((entries) => {
+      if (!cancelled) setDateAvailability(Object.fromEntries(entries))
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rooms, checkInStr, checkOutStr])
 
   // Auto-set filter based on highlighted room's category once rooms load
   useEffect(() => {
@@ -219,7 +241,9 @@ const SearchPage: React.FC = () => {
               {loading ? <p className="font-classy text-sm text-gray-500">Loading rooms…</p> : null}
               {error ? <p className="font-classy text-sm text-red-600">Failed to load rooms: {error}</p> : null}
               {filteredRooms.map((room) => {
-                const isAvailable = room.maxGuests >= totalGuests
+                const hasCapacity = room.maxGuests >= totalGuests
+                const isDateAvailable = dateAvailability[room.id] !== false
+                const isAvailable = hasCapacity && isDateAvailable
                 const isHighlighted = room.id === highlightedRoomId
                 const detailsLink = `/details/${room.id}?${encodeBookingQuery(bookingData)}`
                 const bookLink = `/payments?room=${room.id}&${encodeBookingQuery(bookingData)}`
@@ -235,6 +259,18 @@ const SearchPage: React.FC = () => {
                     <div className="flex flex-col sm:flex-row gap-6">
                       <div className="relative w-full sm:w-[300px] h-[220px] shrink-0 overflow-hidden bg-gray-100">
                         <img src={room.image} alt={room.name} className="w-full h-full object-cover" />
+                        {room.discountPercent > 0 ? (
+                          <span className="absolute left-3 top-3 bg-coffee text-white font-classy text-[10px] tracking-widest uppercase px-3 py-1">
+                            {room.discountPercent}% Off
+                          </span>
+                        ) : null}
+                        {!isDateAvailable ? (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                            <span className="border border-white/50 text-white font-classy text-xs tracking-[0.2em] uppercase px-4 py-2">
+                              Not Available
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="flex-1 min-w-0">
@@ -243,7 +279,7 @@ const SearchPage: React.FC = () => {
 
                         <div className="flex flex-wrap items-center gap-2 text-sm font-classy mb-4">
                           <span className={isAvailable ? 'text-coffee font-medium' : 'text-gray-400 font-medium'}>
-                            {isAvailable ? 'Available' : 'Not enough capacity'}
+                            {!isDateAvailable ? 'No available room for these dates' : !hasCapacity ? 'Not enough capacity' : 'Available'}
                           </span>
                           <span className="text-gray-300">•</span>
                           <span className="text-gray-600">{room.beds}</span>
@@ -291,6 +327,11 @@ const SearchPage: React.FC = () => {
                       </div>
 
                       <div className="text-left sm:text-right shrink-0">
+                        {room.discountPercent > 0 ? (
+                          <div className="font-classy text-sm text-gray-400 line-through">
+                            ₱{room.basePriceValue.toLocaleString('en-PH')}
+                          </div>
+                        ) : null}
                         <div className="font-classy text-2xl text-gray-900 mb-0.5">{room.price}</div>
                         <div className="font-classy text-xs text-gray-400">Average Per Night</div>
                         <div className="font-classy text-xs text-gray-400 mb-4">Excluding taxes and fees</div>
@@ -302,7 +343,7 @@ const SearchPage: React.FC = () => {
                               : 'bg-gray-200 text-gray-400 pointer-events-none'
                           }`}
                         >
-                          Book Now
+                          {isAvailable ? 'Book Now' : 'Unavailable'}
                         </Link>
                       </div>
                     </div>

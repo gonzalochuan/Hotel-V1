@@ -3,7 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import Navigation from '@/components/layout/Navigation'
 import { useRoomsCatalog } from '@/context/RoomsCatalogContext'
 import { useAuth } from '@/context/AuthContext'
-import { createBooking } from '@/services/bookingsApi'
+import { checkRoomAvailability, createBooking } from '@/services/bookingsApi'
+import { createPaymentIntent } from '@/services/paymentsApi'
+import {
+  attachPaymentMethod,
+  createPaymentMethod,
+  getPaymentIntentStatus,
+  type PaymentMethodType,
+} from '@/services/paymongo'
 import { ENHANCEMENTS, TAX_RATE } from '@/data/enhancements'
 import { BookingData } from '@/types'
 import { addDays, formatDateWithWeekday, getDaysBetween, startOfDay } from '@/utils/dateHelpers'
@@ -67,6 +74,46 @@ const HIGHLIGHTS = [
   },
 ]
 
+type PaymentMethod = 'visa' | 'mastercard' | 'gcash' | 'maya'
+
+type CardDetails = {
+  name: string
+  number: string
+  expiry: string
+  cvv: string
+}
+
+const EMPTY_CARD_DETAILS: CardDetails = { name: '', number: '', expiry: '', cvv: '' }
+
+const PAYMENT_METHODS: { id: PaymentMethod; label: string; logo: string }[] = [
+  { id: 'visa', label: 'Visa', logo: '/image/visalogo.png' },
+  { id: 'mastercard', label: 'Mastercard', logo: '/image/mastercardlogo.png' },
+  { id: 'gcash', label: 'GCash', logo: '/image/gcashlogo.png' },
+  { id: 'maya', label: 'Maya', logo: '/image/mayalogo.png' },
+]
+
+const PAYMONGO_TYPE: Record<PaymentMethod, PaymentMethodType> = {
+  visa: 'card',
+  mastercard: 'card',
+  gcash: 'gcash',
+  maya: 'paymaya',
+}
+
+async function pollUntilSettled(intentId: string, clientKey: string, popup: Window | null): Promise<string> {
+  const maxAttempts = 45
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    const status = await getPaymentIntentStatus(intentId, clientKey)
+    if (status === 'succeeded' || status === 'awaiting_payment_method') {
+      popup?.close()
+      return status
+    }
+    if (popup?.closed) return status
+  }
+  popup?.close()
+  return 'timeout'
+}
+
 const defaultBookingData = (): BookingData => {
   const today = startOfDay(new Date())
   return {
@@ -85,6 +132,12 @@ const PaymentsPage: React.FC = () => {
   const [selectedEnhancements, setSelectedEnhancements] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [processingLabel, setProcessingLabel] = useState<string | null>(null)
+  const [guestFirstName, setGuestFirstName] = useState('')
+  const [guestEmail, setGuestEmail] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null)
+  const [cardDetails, setCardDetails] = useState<CardDetails>(EMPTY_CARD_DETAILS)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
 
   const { rooms, loading, error } = useRoomsCatalog()
   const { session, signInWithGoogle } = useAuth()
@@ -110,34 +163,110 @@ const PaymentsPage: React.FC = () => {
 
   const submitBooking = async (accessToken: string) => {
     if (!room) return
+    await createBooking(
+      {
+        roomId: room.id,
+        checkIn: bookingData.dates.checkIn.toISOString().slice(0, 10),
+        checkOut: bookingData.dates.checkOut.toISOString().slice(0, 10),
+        adults: bookingData.guests.adults,
+        children: bookingData.guests.children,
+        roomsCount: roomCount,
+        enhancements: pickedEnhancements.map((item) => ({ id: item.id, label: item.label, price: item.price })),
+        subtotal,
+        taxes: taxesAndFees,
+        total,
+      },
+      accessToken,
+    )
+    navigate(`/success?room=${room.id}`)
+  }
+
+  const validatePayment = (): string | null => {
+    if (!paymentMethod) return 'Select a payment method to continue.'
+    if (!guestEmail.trim()) return 'Enter your email address above.'
+    if (paymentMethod === 'visa' || paymentMethod === 'mastercard') {
+      if (!cardDetails.name.trim()) return 'Enter the name on the card.'
+      if (cardDetails.number.replace(/\s/g, '').length < 12) return 'Enter a valid card number.'
+      if (!/^\d{2}\/\d{2}$/.test(cardDetails.expiry.trim())) return 'Enter expiry as MM/YY.'
+      if (!/^\d{3,4}$/.test(cardDetails.cvv.trim())) return 'Enter a valid CVV.'
+    }
+    return null
+  }
+
+  const processPaymentAndBook = async (accessToken: string) => {
+    if (!room) return
     setIsSubmitting(true)
     setSubmitError(null)
     try {
-      await createBooking(
-        {
-          roomId: room.id,
-          checkIn: bookingData.dates.checkIn.toISOString().slice(0, 10),
-          checkOut: bookingData.dates.checkOut.toISOString().slice(0, 10),
-          adults: bookingData.guests.adults,
-          children: bookingData.guests.children,
-          roomsCount: roomCount,
-          enhancements: pickedEnhancements.map((item) => ({ id: item.id, label: item.label, price: item.price })),
-          subtotal,
-          taxes: taxesAndFees,
-          total,
-        },
-        accessToken,
+      setProcessingLabel('Checking availability…')
+      const checkIn = bookingData.dates.checkIn.toISOString().slice(0, 10)
+      const checkOut = bookingData.dates.checkOut.toISOString().slice(0, 10)
+      const available = await checkRoomAvailability(room.id, checkIn, checkOut)
+      if (!available) {
+        throw new Error('This room is already booked for the selected dates. Please choose different dates.')
+      }
+
+      setProcessingLabel('Processing payment…')
+      const intent = await createPaymentIntent(total, accessToken)
+
+      const pmType = PAYMONGO_TYPE[paymentMethod!]
+      const [expMonthStr, expYearStr] = cardDetails.expiry.split('/')
+      const paymentMethodId = await createPaymentMethod(
+        pmType,
+        { name: pmType === 'card' ? cardDetails.name : guestFirstName || 'Guest', email: guestEmail },
+        pmType === 'card'
+          ? {
+              cardNumber: cardDetails.number,
+              expMonth: Number(expMonthStr),
+              expYear: 2000 + Number(expYearStr),
+              cvc: cardDetails.cvv,
+            }
+          : undefined,
       )
-      navigate(`/success?room=${room.id}`)
+
+      const returnUrl = `${window.location.origin}/payment-return.html`
+      const attachResult = await attachPaymentMethod(intent.id, intent.clientKey, paymentMethodId, returnUrl)
+
+      let finalStatus = attachResult.status
+      if (attachResult.redirectUrl) {
+        setProcessingLabel(`Waiting for ${paymentMethod === 'gcash' ? 'GCash' : paymentMethod === 'maya' ? 'Maya' : 'authorization'}…`)
+        const width = 480
+        const height = 680
+        const left = window.screenX + (window.outerWidth - width) / 2
+        const top = window.screenY + (window.outerHeight - height) / 2
+        const popup = window.open(
+          attachResult.redirectUrl,
+          'paymongo-checkout',
+          `width=${width},height=${height},left=${left},top=${top}`,
+        )
+        if (!popup) throw new Error('Popup blocked. Please allow popups for this site and try again.')
+        finalStatus = await pollUntilSettled(intent.id, intent.clientKey, popup)
+      }
+
+      if (finalStatus !== 'succeeded') {
+        throw new Error('Payment was not completed. Please try again.')
+      }
+
+      setProcessingLabel('Finalizing booking…')
+      await submitBooking(accessToken)
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to confirm booking')
+      setSubmitError(err instanceof Error ? err.message : 'Payment failed')
     } finally {
       setIsSubmitting(false)
+      setProcessingLabel(null)
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+
+    const validationMessage = validatePayment()
+    if (validationMessage) {
+      setPaymentError(validationMessage)
+      return
+    }
+    setPaymentError(null)
 
     if (!session) {
       pendingConfirmRef.current = true
@@ -145,7 +274,7 @@ const PaymentsPage: React.FC = () => {
       return
     }
 
-    await submitBooking(session.access_token)
+    await processPaymentAndBook(session.access_token)
   }
 
   // Once sign-in completes (popup closes, session appears), automatically
@@ -153,7 +282,7 @@ const PaymentsPage: React.FC = () => {
   useEffect(() => {
     if (session && pendingConfirmRef.current) {
       pendingConfirmRef.current = false
-      void submitBooking(session.access_token)
+      void processPaymentAndBook(session.access_token)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session])
@@ -234,6 +363,8 @@ const PaymentsPage: React.FC = () => {
                         type="text"
                         required
                         placeholder="e.g. John"
+                        value={i === 0 ? guestFirstName : undefined}
+                        onChange={i === 0 ? (e) => setGuestFirstName(e.target.value) : undefined}
                         className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none placeholder-gray-400"
                       />
                     </div>
@@ -259,6 +390,8 @@ const PaymentsPage: React.FC = () => {
                             type="email"
                             required
                             placeholder="you@example.com"
+                            value={guestEmail}
+                            onChange={(e) => setGuestEmail(e.target.value)}
                             className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none placeholder-gray-400"
                           />
                         </div>
@@ -328,77 +461,98 @@ const PaymentsPage: React.FC = () => {
               </div>
 
               <h2 id="payment-details" className="font-classy text-2xl text-gray-900 mb-4">Payment Details</h2>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="border border-gray-300 p-1">
-                  <img src="/image/visalogo.png" alt="VISA" className="h-6 w-auto" />
-                </div>
-                <div className="border border-gray-300 p-1">
-                  <img src="/image/mastercardlogo.png" alt="MASTERCARD" className="h-6 w-auto" />
-                </div>
-                <div className="border border-gray-300 p-1">
-                  <img src="/image/amexlogo.png" alt="AMEX" className="h-6 w-8" />
-                </div>
-                <div className="border border-gray-300 p-1">
-                  <img src="/image/jcblogo.png" alt="JCB" className="h-6 w-8" />
-                </div>
+
+              <div className="grid grid-cols-4 gap-2 mb-4">
+                {PAYMENT_METHODS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod(item.id)
+                      setPaymentError(null)
+                    }}
+                    className={`flex h-16 flex-col items-center justify-center gap-1 border transition-colors ${
+                      paymentMethod === item.id ? 'border-coffee bg-coffee/5' : 'border-gray-300 hover:border-coffee/40'
+                    }`}
+                    aria-pressed={paymentMethod === item.id}
+                  >
+                    <img src={item.logo} alt={item.label} className="h-5 w-auto object-contain" />
+                    <span className="font-classy text-[10px] tracking-widest uppercase text-gray-500">
+                      {item.label}
+                    </span>
+                  </button>
+                ))}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-                <div className="sm:col-span-2">
-                  <label className="block font-classy text-base text-gray-500 mb-1">
-                    Name on card <span className="text-coffee">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none"
-                  />
+              {paymentMethod === 'visa' || paymentMethod === 'mastercard' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+                  <div className="sm:col-span-2">
+                    <label className="block font-classy text-base text-gray-500 mb-1">
+                      Name on card <span className="text-coffee">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={cardDetails.name}
+                      onChange={(e) => setCardDetails({ ...cardDetails, name: e.target.value })}
+                      className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block font-classy text-base text-gray-500 mb-1">
+                      Card number <span className="text-coffee">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      inputMode="numeric"
+                      placeholder="0000 0000 0000 0000"
+                      value={cardDetails.number}
+                      onChange={(e) => setCardDetails({ ...cardDetails, number: e.target.value })}
+                      className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none placeholder-gray-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-classy text-base text-gray-500 mb-1">
+                      Expiration date <span className="text-coffee">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="MM/YY"
+                      value={cardDetails.expiry}
+                      onChange={(e) => setCardDetails({ ...cardDetails, expiry: e.target.value })}
+                      className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none placeholder-gray-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-classy text-base text-gray-500 mb-1">
+                      Security code <span className="text-coffee">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="CVV"
+                      value={cardDetails.cvv}
+                      onChange={(e) => setCardDetails({ ...cardDetails, cvv: e.target.value })}
+                      className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none placeholder-gray-400"
+                    />
+                  </div>
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block font-classy text-base text-gray-500 mb-1">
-                    Card number <span className="text-coffee">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    inputMode="numeric"
-                    placeholder="0000 0000 0000 0000"
-                    className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none placeholder-gray-400"
-                  />
+              ) : null}
+
+              {paymentMethod === 'gcash' || paymentMethod === 'maya' ? (
+                <div className="bg-gray-50 border border-gray-100 p-4 mb-8">
+                  <p className="font-classy text-sm text-gray-600 leading-relaxed">
+                    You&apos;ll be redirected to {paymentMethod === 'gcash' ? 'GCash' : 'Maya'} to authorize this
+                    payment after submitting.
+                  </p>
                 </div>
-                <div>
-                  <label className="block font-classy text-base text-gray-500 mb-1">
-                    Expiration date <span className="text-coffee">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="MM/YY"
-                    className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none placeholder-gray-400"
-                  />
-                </div>
-                <div>
-                  <label className="block font-classy text-base text-gray-500 mb-1">
-                    Security code <span className="text-coffee">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="CVV"
-                    className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none placeholder-gray-400"
-                  />
-                </div>
-                <div>
-                  <label className="block font-classy text-base text-gray-500 mb-1">
-                    Billing ZIP code <span className="text-coffee">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full border border-gray-300 px-4 py-3 text-base font-classy focus:border-coffee outline-none"
-                  />
-                </div>
-              </div>
+              ) : null}
+
+              {paymentError ? (
+                <p className="font-classy text-sm text-red-600 mb-4">{paymentError}</p>
+              ) : null}
 
               <div className="bg-gray-50 border border-gray-100 p-5 mb-6">
                 <span className="inline-block font-classy text-[11px] tracking-widest uppercase bg-green-100 text-green-700 px-2 py-1 mb-3">
@@ -470,7 +624,11 @@ const PaymentsPage: React.FC = () => {
                   <rect x="4" y="10" width="16" height="10" rx="1.5" />
                   <path d="M8 10V7a4 4 0 018 0v3" />
                 </svg>
-                {isSubmitting ? 'Confirming…' : session ? 'Complete Booking' : 'Sign in with Google to Book'}
+                {isSubmitting
+                  ? processingLabel ?? 'Confirming…'
+                  : session
+                    ? 'Complete Booking'
+                    : 'Sign in with Google to Book'}
               </button>
               <p className="font-classy text-base text-gray-400 text-center mt-3">
                 Our secure encryption protects your personal details at every step.
