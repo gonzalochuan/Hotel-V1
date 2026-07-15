@@ -1,6 +1,6 @@
 # Hotel-V1
 
-Simple frontend project.
+Delightful Hotels
 
 ## Quick start
 
